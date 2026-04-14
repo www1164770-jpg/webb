@@ -1,24 +1,41 @@
 <template>
   <div class="search-container">
+    <select v-model="currentEngine" class="engine-select">
+      <option value="baidu">百度</option>
+      <option value="google">谷歌</option>
+      <option value="bing">必应</option>
+    </select>
+    
     <input
       type="text"
       v-model="searchKeyword"
-      placeholder="搜索网站..."
+      placeholder="输入关键词搜索..."
       class="search-input"
       @keyup.enter="handleSearch"
     />
-    <button class="search-button" @click="handleSearch">搜索</button>
+    <button @click="handleSearch" class="search-btn">搜索</button>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 
-const emit = defineEmits(['search'])
 const searchKeyword = ref('')
+const currentEngine = ref('baidu') // 默认百度
+
+// 引擎 URL 配置
+const engines = {
+  baidu: 'https://www.baidu.com/s?wd=',
+  google: 'https://www.google.com/search?q=',
+  bing: 'https://www.bing.com/search?q='
+}
 
 const handleSearch = () => {
-  emit('search', searchKeyword.value)
+  if (!searchKeyword.ref.trim()) return
+  
+  // 在新窗口打开对应引擎的搜索结果
+  const url = engines[currentEngine.value] + encodeURIComponent(searchKeyword.value)
+  window.open(url, '_blank')
 }
 </script>
 
