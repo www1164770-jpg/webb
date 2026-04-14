@@ -1,0 +1,1956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>我的导航</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script>
+    // FaviconLoader 内联（避免404问题）
+    const FaviconLoader = (() => {
+      const DB_NAME = 'favicon_cache', DB_VERSION = 1, STORE_NAME = 'favicons', TIMEOUT_MS = 5000;
+      let db = null;
+      const openDB = () => new Promise((resolve, reject) => {
+        if (db) return resolve(db);
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = e => e.target.result.createObjectStore(STORE_NAME, { keyPath: 'domain' });
+        req.onsuccess = e => { db = e.target.result; resolve(db); };
+        req.onerror = () => reject(req.error);
+      });
+      const getFromCache = async (domain) => {
+        try {
+          const database = await openDB();
+          return new Promise(resolve => {
+            const req = database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(domain);
+            req.onsuccess = () => resolve(req.result ? req.result.data : null);
+            req.onerror = () => resolve(null);
+          });
+        } catch { return null; }
+      };
+      const saveToCache = async (domain, data) => {
+        try {
+          const database = await openDB();
+          database.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put({ domain, data, time: Date.now() });
+        } catch {}
+      };
+      const imageUrlToBase64 = (url) => new Promise(resolve => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => { try { const c = document.createElement('canvas'); c.width = img.width||32; c.height = img.height||32; c.getContext('2d').drawImage(img,0,0); resolve(c.toDataURL()); } catch { resolve(null); } };
+        img.onerror = () => resolve(null);
+        img.src = url;
+        setTimeout(() => resolve(null), TIMEOUT_MS);
+      });
+      const COLORS = ['#4CAF50','#2196F3','#FF5722','#9C27B0','#FF9800','#00BCD4','#E91E63','#3F51B5'];
+      const hashColor = str => { let h=0; for(let i=0;i<str.length;i++) h=str.charCodeAt(i)+((h<<5)-h); return COLORS[Math.abs(h)%COLORS.length]; };
+      const generateLocalIcon = (domain) => {
+        const c = document.createElement('canvas'); c.width = c.height = 64;
+        const ctx = c.getContext('2d'), color = hashColor(domain), letter = (domain.replace('www.','')[0]||'?').toUpperCase(), r = 14;
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.moveTo(r,0); ctx.lineTo(64-r,0); ctx.quadraticCurveTo(64,0,64,r); ctx.lineTo(64,64-r); ctx.quadraticCurveTo(64,64,64-r,64); ctx.lineTo(r,64); ctx.quadraticCurveTo(0,64,0,64-r); ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='white'; ctx.font='bold 32px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(letter,32,33);
+        return c.toDataURL();
+      };
+      const fetchFromNetwork = async (url, domain) => {
+        const services = [`https://favicon.cccyun.cc/${domain}`,`https://api.iowen.cn/favicon/${domain}.png`,`https://statics.dnspod.cn/proxy_favicon/_/favicon?domain=${domain}`];
+        for (const svc of services) { const b64 = await imageUrlToBase64(svc); if (b64) { await saveToCache(domain, b64); return b64; } }
+        return null;
+      };
+      const getLogo = async (url) => {
+        try {
+          const domain = new URL(url).hostname;
+          const cached = await getFromCache(domain);
+          if (cached) return cached;
+          if (navigator.onLine) { const f = await fetchFromNetwork(url, domain); if (f) return f; }
+          return generateLocalIcon(domain);
+        } catch { return generateLocalIcon(url); }
+      };
+      return { getLogo, generateLocalIcon };
+    })();
+    </script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      /*整个页面的基础外观*/
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f5f5f5;
+        min-height: 100vh;
+        margin: 0;
+        padding: 0;
+      }
+      
+      /*页面最外层容器布局样式*/
+      .app {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+      }
+      
+      .content-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 1200px;
+        position: relative;
+      }
+      
+      /* Logo styles */
+      .logo-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 30px;
+      }
+      
+      .logo {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        display: flex;
+        align-items: center;
+      }
+      
+      .logo-icon {
+        font-size: 32px;
+        margin-right: 10px;
+      }
+      
+      /* Search styles */
+      .search-container {
+        width: 100%;
+        max-width: 600px;
+        display: flex;
+        margin-bottom: 30px;
+        justify-content: center;
+      }
+      
+      .search-input {
+        flex: 1;
+        padding: 12px 20px;
+        border: 1px solid #ddd;
+        border-right: none;
+        border-radius: 4px 0 0 4px;
+        font-size: 16px;
+        outline: none;
+        transition: border-color 0.3s;
+      }
+      
+      .search-input:focus {
+        border-color: #4CAF50;
+        box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+      }
+      
+      .search-button {
+        padding: 12px 24px;
+        background-color: #333;
+        color: white;
+        border: none;
+        border-radius: 0 4px 4px 0;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      
+      .search-button:hover {
+        background-color: #555;
+      }
+      
+      /* Search History */
+      .search-container {
+        position: relative;
+      }
+      
+      .search-history {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-top: none;
+        border-radius: 0 0 4px 4px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      
+      .search-history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 15px;
+        border-bottom: 1px solid #eee;
+      }
+      
+      .search-history-header span {
+        font-size: 14px;
+        color: #666;
+        font-weight: bold;
+      }
+      
+      .clear-history-button {
+        background: none;
+        border: none;
+        color: #999;
+        font-size: 12px;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+      
+      .clear-history-button:hover {
+        background-color: #f5f5f5;
+        color: #666;
+      }
+      
+      .search-history-item {
+        padding: 10px 15px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .search-history-item:hover {
+        background-color: #f5f5f5;
+      }
+      
+      .remove-history-item {
+        background: none;
+        border: none;
+        color: #999;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 0 5px;
+      }
+      
+      .remove-history-item:hover {
+        color: #ff4444;
+      }
+      
+      /* Category tabs */
+      .category-tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 30px;
+        justify-content: center;
+      }
+      
+      .category-tab {
+        padding: 8px 16px;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-size: 14px;
+      }
+      
+      .category-tab:hover {
+        border-color: #4CAF50;
+        color: #4CAF50;
+      }
+      
+      .category-tab.active {
+        background-color: #333;
+        color: white;
+        border-color: #333;
+      }
+      
+      /* Websites grid */
+      .websites-grid {
+        width: 100%;
+        max-width: 1200px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 15px;
+      }
+      
+      /* Website card */
+      .website-card {
+        background-color: white;
+        border-radius: 12px;
+        padding: 15px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        position: relative;
+        min-height: 120px;
+        justify-content: center;
+      }
+      
+      .website-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+      }
+      
+      .website-icon {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #f8f9fa;
+        border-radius: 12px;
+        padding: 10px;
+      }
+      
+      .website-icon img {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 8px;
+      }
+      
+      .website-name {
+        font-size: 14px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 5px;
+        line-height: 1.2;
+      }
+      
+      .website-url {
+        font-size: 10px;
+        color: #999;
+        word-break: break-all;
+        margin-bottom: 5px;
+        line-height: 1.1;
+      }
+      
+      .website-actions {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      
+      .website-card:hover .website-actions {
+        opacity: 1;
+      }
+      
+      .delete-button {
+        background: white;
+        border: 1px solid #ddd;
+        color: #ff4444;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: all 0.3s;
+      }
+      
+      .delete-button:hover {
+        background-color: #ff4444;
+        color: white;
+        border-color: #ff4444;
+      }
+      
+      /* Add Website Form */
+      .add-form-container {
+        width: 100%;
+        max-width: 600px;
+        margin-bottom: 30px;
+      }
+      
+      .add-form {
+        background-color: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      
+      .add-form h3 {
+        margin-bottom: 20px;
+        color: #333;
+        text-align: center;
+      }
+      
+      .form-group {
+        margin-bottom: 15px;
+      }
+      
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 14px;
+        color: #666;
+      }
+      
+      .form-group input,
+      .form-group select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.3s;
+      }
+      
+      .form-group input:focus,
+      .form-group select:focus {
+        border-color: #4CAF50;
+        box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+      }
+      
+      .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      
+      .add-button {
+        padding: 8px 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      
+      .add-button:hover {
+        background-color: #45a049;
+      }
+      
+      .cancel-button {
+        padding: 8px 16px;
+        background-color: #f5f5f5;
+        color: #333;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+      
+      .cancel-button:hover {
+        background-color: #e0e0e0;
+      }
+      
+      .add-tab {
+        background-color: #f5f5f5;
+        border: 1px dashed #4CAF50;
+        color: #4CAF50;
+      }
+      
+      .add-tab:hover {
+        background-color: #e8f5e8;
+        border-color: #45a049;
+      }
+      
+      /* Loading State */
+      .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        text-align: center;
+      }
+      
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #333;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* Error State */
+      .error-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        text-align: center;
+        background-color: #fff5f5;
+        border-radius: 8px;
+        margin: 20px 0;
+        width: 100%;
+        max-width: 600px;
+      }
+      
+      .error-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
+      }
+      
+      .error-container p {
+        color: #d32f2f;
+        margin-bottom: 20px;
+      }
+      
+      .retry-button {
+        padding: 8px 16px;
+        background-color: #333;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      
+      .retry-button:hover {
+        background-color: #555;
+      }
+      
+      /* Load More */
+      .loading-more-container {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px 0;
+        gap: 10px;
+        color: #666;
+      }
+      
+      .loading-spinner.small {
+        width: 20px;
+        height: 20px;
+        border-width: 2px;
+        margin-bottom: 0;
+      }
+      
+      .no-more-data {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 20px 0;
+        color: #999;
+        font-size: 14px;
+      }
+      
+      /* Empty State */
+      .empty-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        text-align: center;
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        margin: 20px 0;
+        width: 100%;
+        max-width: 600px;
+      }
+      
+      .empty-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
+      }
+      
+      .empty-container p {
+        color: #666;
+        margin-bottom: 20px;
+      }
+      
+      .add-first-button {
+        padding: 8px 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      
+      .add-first-button:hover {
+        background-color: #45a049;
+      }
+      
+      /* 用户认证样式 */
+      .user-bar {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .user-greeting { font-size: 14px; color: #555; }
+      .auth-btn {
+        padding: 6px 16px;
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 20px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .auth-btn:hover { background: #555; }
+      .auth-btn.outline {
+        background: transparent;
+        color: #333;
+        border: 1px solid #ccc;
+      }
+      .auth-btn.outline:hover { background: #f0f0f0; }
+      .auth-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+      }
+      .auth-modal {
+        background: white;
+        border-radius: 12px;
+        padding: 32px 28px;
+        width: 340px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      }
+      .auth-modal-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      .auth-field { margin-bottom: 14px; }
+      .auth-field input {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 14px;
+        outline: none;
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+      }
+      .auth-field input:focus { border-color: #333; }
+      .auth-error {
+        color: #e53e3e;
+        font-size: 13px;
+        margin-bottom: 10px;
+        text-align: center;
+      }
+      .auth-submit {
+        width: 100%;
+        padding: 11px;
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 15px;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-bottom: 12px;
+      }
+      .auth-submit:hover:not(:disabled) { background: #555; }
+      .auth-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+      .auth-switch { text-align: center; font-size: 13px; color: #666; }
+      .auth-switch a { color: #333; font-weight: bold; cursor: pointer; text-decoration: underline; }
+      /* 用户认证样式结束 */
+
+      /* AI 搜索助手样式 */
+      .ai-search-container {
+        width: 100%;
+        max-width: 600px;
+        margin-bottom: 16px;
+        position: relative;
+      }
+
+      .ai-search-bar {
+        display: flex;
+        align-items: center;
+        background: linear-gradient(135deg, #1a1a2e, #16213e);
+        border: 1px solid rgba(99, 102, 241, 0.4);
+        border-radius: 12px;
+        padding: 10px 14px;
+        gap: 10px;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.15);
+        transition: border-color 0.3s, box-shadow 0.3s;
+      }
+
+      .ai-search-bar:focus-within {
+        border-color: rgba(99, 102, 241, 0.8);
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+      }
+
+      .ai-icon { font-size: 18px; }
+
+      .ai-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: #e2e8f0;
+        font-size: 14px;
+      }
+
+      .ai-input::placeholder { color: #64748b; }
+
+      .ai-btn {
+        padding: 6px 16px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: opacity 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 72px;
+        justify-content: center;
+      }
+
+      .ai-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .ai-btn:hover:not(:disabled) { opacity: 0.9; }
+
+      .ai-btn-spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .ai-panel {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        background: #1e1e2e;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        z-index: 1000;
+        overflow: hidden;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .ai-panel-header {
+        padding: 10px 16px;
+        font-size: 12px;
+        color: #6366f1;
+        border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .ai-esc-tip {
+        font-size: 11px;
+        color: #475569;
+        background: rgba(255,255,255,0.05);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .ai-result-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: background 0.2s;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+
+      .ai-result-item:hover { background: rgba(99, 102, 241, 0.1); }
+      .ai-result-item:last-child { border-bottom: none; }
+
+      .ai-result-arrow {
+        color: #475569;
+        font-size: 16px;
+        align-self: center;
+        flex-shrink: 0;
+        transition: color 0.2s, transform 0.2s;
+      }
+
+      .ai-result-item:hover .ai-result-arrow {
+        color: #6366f1;
+        transform: translateX(3px);
+      }
+
+      .ai-result-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: #2a2a3e;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .ai-result-icon img { width: 24px; height: 24px; object-fit: contain; }
+
+      .ai-result-info { flex: 1; min-width: 0; }
+
+      .ai-result-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #e2e8f0;
+        margin-bottom: 2px;
+      }
+
+      .ai-result-url {
+        font-size: 11px;
+        color: #6366f1;
+        margin-bottom: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .ai-result-reason { font-size: 12px; color: #94a3b8; }
+
+      .ai-loading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 20px 16px;
+        color: #94a3b8;
+        font-size: 14px;
+      }
+
+      /* 骨架屏 */
+      .ai-skeleton-wrap { padding: 0; }
+
+      .ai-loading-tip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px 8px;
+        color: #6366f1;
+        font-size: 13px;
+        border-bottom: 1px solid rgba(99,102,241,0.15);
+      }
+
+      .ai-skeleton-item {
+        display: flex;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+      }
+
+      .ai-skeleton-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #2a2a3e 25%, #3a3a5e 50%, #2a2a3e 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        flex-shrink: 0;
+      }
+
+      .ai-skeleton-info { flex: 1; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+
+      .ai-skeleton-line {
+        height: 10px;
+        border-radius: 4px;
+        background: linear-gradient(90deg, #2a2a3e 25%, #3a3a5e 50%, #2a2a3e 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+      }
+
+      .ai-skeleton-line.w60 { width: 60%; }
+      .ai-skeleton-line.w40 { width: 40%; }
+      .ai-skeleton-line.w80 { width: 80%; }
+
+      @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      .ai-spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(99, 102, 241, 0.3);
+        border-top-color: #6366f1;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        flex-shrink: 0;
+      }
+
+      .ai-error {
+        padding: 16px;
+        color: #f87171;
+        font-size: 13px;
+      }
+
+      /* AI 搜索样式结束 */
+
+      @media (max-width: 768px) {
+        .app {
+          padding: 20px 10px;
+        }
+        
+        .logo {
+          font-size: 20px;
+        }
+        
+        .search-input {
+          font-size: 14px;
+          padding: 10px 16px;
+        }
+        
+        .search-button {
+          font-size: 14px;
+          padding: 10px 20px;
+        }
+        
+        .category-tabs {
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+        
+        .category-tab {
+          font-size: 12px;
+          padding: 6px 12px;
+        }
+        
+        .websites-grid {
+          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          gap: 10px;
+        }
+        
+        .website-card {
+          padding: 12px;
+          min-height: 100px;
+        }
+        
+        .website-icon {
+          width: 56px;
+          height: 56px;
+          padding: 8px;
+        }
+        
+        .website-name {
+          font-size: 13px;
+        }
+        
+        .website-url {
+          font-size: 9px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="app">
+        <div class="content-container">
+          <!-- 右上角用户区域 -->
+          <div class="user-bar">
+            <template v-if="currentUser">
+              <span class="user-greeting">👤 {{ currentUser }}</span>
+              <button class="auth-btn outline" @click="doLogout">退出</button>
+            </template>
+            <template v-else>
+              <button class="auth-btn" @click="authMode='login'">登录</button>
+              <button class="auth-btn outline" @click="authMode='register'">注册</button>
+            </template>
+          </div>
+
+          <!-- 登录/注册模态框 -->
+          <div v-if="authMode" class="auth-modal-overlay" @click.self="authMode=''">
+            <div class="auth-modal">
+              <div class="auth-modal-title">{{ authMode === 'login' ? '登录' : '注册' }}</div>
+              <div class="auth-field">
+                <input v-model="authForm.username" placeholder="用户名" @keyup.enter="authMode==='login'?doLogin():doRegister()" />
+              </div>
+              <div v-if="authMode==='register'" class="auth-field">
+                <input v-model="authForm.email" placeholder="邮箱" type="email" />
+              </div>
+              <div class="auth-field">
+                <input v-model="authForm.password" placeholder="密码（至少6位）" type="password" @keyup.enter="authMode==='login'?doLogin():doRegister()" />
+              </div>
+              <div v-if="authError" class="auth-error">{{ authError }}</div>
+              <button class="auth-submit" :disabled="authLoading" @click="authMode==='login'?doLogin():doRegister()">
+                {{ authLoading ? '处理中...' : (authMode==='login' ? '登录' : '注册') }}
+              </button>
+              <div class="auth-switch">
+                <span v-if="authMode==='login'">没有账号？<a @click="authMode='register';authError=''">去注册</a></span>
+                <span v-else>已有账号？<a @click="authMode='login';authError=''">去登录</a></span>
+              </div>
+              <div style="text-align:center;margin-top:12px;">
+                <a @click="doGuest" style="color:#999;font-size:13px;cursor:pointer;text-decoration:underline;">游客访问（不保存数据）</a>
+              </div>
+              <div style="margin-top:16px;">
+                <div style="text-align:center;margin-bottom:12px;color:#999;font-size:13px;">或使用以下方式登录</div>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+                  <button @click="doWechatLogin" style="padding:8px 12px;border:1px solid #07C160;color:#07C160;border-radius:6px;background:transparent;cursor:pointer;transition:all 0.2s;">
+                    📱 微信登录
+                  </button>
+                  <button @click="doQQLogin" style="padding:8px 12px;border:1px solid #12B7F5;color:#12B7F5;border-radius:6px;background:transparent;cursor:pointer;transition:all 0.2s;">
+                    🐧 QQ登录
+                  </button>
+                  <button @click="doPhoneLogin" style="padding:8px 12px;border:1px solid #FF6B6B;color:#FF6B6B;border-radius:6px;background:transparent;cursor:pointer;transition:all 0.2s;">
+                    📞 手机号登录
+                  </button>
+                  <button @click="doGithubLogin" style="padding:8px 12px;border:1px solid #333;color:#333;border-radius:6px;background:transparent;cursor:pointer;transition:all 0.2s;">
+                    👨‍💻 GitHub登录
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Logo -->
+          <div class="logo-container">
+            <div class="logo">
+              <span class="logo-icon">🚀</span>
+              我的导航
+            </div>
+          </div>
+          
+          <!-- AI 智能搜索助手 -->
+          <div class="ai-search-container" v-click-outside="closeAiPanel">
+            <div class="ai-search-bar">
+              <span class="ai-icon">✨</span>
+              <input
+                type="text"
+                v-model="aiQuery"
+                placeholder="AI 智能推荐网站，输入你的需求..."
+                class="ai-input"
+                @keyup.enter="aiSearch"
+                @keydown="aiOnKeydown"
+                @input="aiOnInput"
+                @focus="aiPanelVisible = aiResults.length > 0 || aiLoading"
+              />
+              <button class="ai-btn" @click="aiSearch" :disabled="aiLoading">
+                <span v-if="aiLoading" class="ai-btn-spinner"></span>
+                <span v-else>✨ 推荐</span>
+              </button>
+            </div>
+            <!-- AI 结果下拉面板 -->
+            <div v-if="aiPanelVisible" class="ai-panel">
+              <!-- 骨架屏加载状态 -->
+              <div v-if="aiLoading" class="ai-skeleton-wrap">
+                <div class="ai-loading-tip">
+                  <span class="ai-spinner"></span>
+                  AI 正在思考中...
+                </div>
+                <div v-for="i in 3" :key="i" class="ai-skeleton-item">
+                  <div class="ai-skeleton-icon"></div>
+                  <div class="ai-skeleton-info">
+                    <div class="ai-skeleton-line w60"></div>
+                    <div class="ai-skeleton-line w40"></div>
+                    <div class="ai-skeleton-line w80"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- 错误提示 -->
+              <div v-else-if="aiError" class="ai-error">
+                <span>⚠️</span> {{ aiError }}
+              </div>
+              <!-- 结果列表 -->
+              <div v-else>
+                <div class="ai-panel-header">✨ AI 为你推荐了 {{ aiResults.length }} 个网站 <span class="ai-esc-tip">Esc 关闭</span></div>
+                <div
+                  v-for="(item, index) in aiResults"
+                  :key="index"
+                  class="ai-result-item"
+                  @click="window.open(item.url, '_blank')"
+                >
+                  <div class="ai-result-icon">
+                    <img :src="getFaviconUrl(item.url, item.title)" @error="onFaviconError($event, item.url, item.title)" />
+                  </div>
+                  <div class="ai-result-info">
+                    <div class="ai-result-title">{{ item.title }}</div>
+                    <div class="ai-result-url">{{ item.url }}</div>
+                    <div class="ai-result-reason">{{ item.reason }}</div>
+                  </div>
+                  <span class="ai-result-arrow">→</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Search -->
+          <div class="search-container">
+            <input
+              type="text"
+              v-model="searchKeyword"
+              placeholder="搜索网站..."
+              class="search-input"
+              @keyup.enter="handleSearch"
+              @focus="showSearchHistory = true"
+              @blur="hideSearchHistory"
+            />
+            <button class="search-button" @click="handleSearch">搜索</button>
+            <!-- Search History -->
+            <div v-if="showSearchHistory && searchHistory.length > 0" class="search-history">
+              <div class="search-history-header">
+                <span>搜索历史</span>
+                <button class="clear-history-button" @click="clearSearchHistory">清除历史</button>
+              </div>
+              <div class="search-history-item" v-for="(item, index) in searchHistory" :key="index" @click="useSearchHistory(item)">
+                {{ item }}
+                <button class="remove-history-item" @click.stop="removeSearchHistory(index)">×</button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Category Tabs -->
+          <div class="category-tabs">
+            <div 
+              class="category-tab" 
+              :class="{ active: activeCategory === 'all' }"
+              @click="handleCategoryChange('all')"
+            >
+              全部
+            </div>
+            <div 
+              v-for="category in categories" 
+              :key="category.id"
+              class="category-tab"
+              :class="{ active: activeCategory === category.id }"
+              @click="handleCategoryChange(category.id)"
+            >
+              {{ category.name }}
+            </div>
+            <div 
+              class="category-tab add-tab"
+              @click="showAddForm = true"
+            >
+              + 添加网站
+            </div>
+          </div>
+          
+          <!-- Add Website Form -->
+          <div v-if="showAddForm" class="add-form-container">
+            <div class="add-form">
+              <h3>添加网站</h3>
+              <div class="form-group">
+                <label>网站名称:</label>
+                <input type="text" v-model="newWebsite.name" placeholder="请输入网站名称" />
+              </div>
+              <div class="form-group">
+                <label>网站URL:</label>
+                <input type="text" v-model="newWebsite.url" placeholder="请输入网站URL" @input="handleUrlChange" />
+                <!-- 实时预览图标 -->
+                <div v-if="newWebsite.url" style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+                  <div style="width:40px;height:40px;border-radius:8px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                    <img 
+                      :src="getFaviconUrl(newWebsite.url)" 
+                      style="width:32px;height:32px;object-fit:contain;"
+                      @error="onFaviconError($event, newWebsite.url, newWebsite.name || newWebsite.url)"
+                    />
+                  </div>
+                  <span style="font-size:12px;color:#999;">图标预览</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>网站描述:</label>
+                <input type="text" v-model="newWebsite.description" placeholder="请输入网站描述" />
+              </div>
+              <div class="form-group">
+                <label>分类:</label>
+                <select v-model="newWebsite.category_id">
+                  <option v-for="category in categories" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </select>
+              </div>
+              <div class="form-actions">
+                <button class="add-button" @click="addWebsite">添加</button>
+                <button class="cancel-button" @click="showAddForm = false">取消</button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Loading State -->
+          <div v-if="loading" class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>加载中...</p>
+          </div>
+          
+          <!-- Error State -->
+          <div v-else-if="error" class="error-container">
+            <div class="error-icon">⚠️</div>
+            <p>{{ error }}</p>
+            <button class="retry-button" @click="fetchWebsites">重试</button>
+          </div>
+          
+          <!-- Websites Grid -->
+          <div v-else class="websites-grid">
+            <div 
+              v-for="website in filteredWebsites" 
+              :key="website.id"
+              class="website-card"
+              @click="openWebsite(website.url)"
+              @keydown.enter="openWebsite(website.url)"
+              @keydown.space="openWebsite(website.url)"
+              tabindex="0"
+              role="link"
+              :aria-label="`打开网站 ${website.name}`"
+            >
+              <div class="website-icon">
+                <img :src="getFaviconUrl(website.url)" :alt="`${website.name} 的图标`" @error="onFaviconError($event, website.url, website.name)" />
+              </div>
+              <div class="website-name">{{ website.name }}</div>
+              <div class="website-url" :aria-label="`网址：${website.url}`">{{ website.url }}</div>
+              <div class="website-actions">
+                <button 
+                  class="delete-button"
+                  @click.stop="deleteWebsite(website.id)"
+                  @keydown.enter.stop="deleteWebsite(website.id)"
+                  @keydown.space.stop="deleteWebsite(website.id)"
+                  tabindex="0"
+                  role="button"
+                  :aria-label="`删除网站 ${website.name}`"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            <!-- Loading More Indicator -->
+            <div v-if="loadingMore" class="loading-more-container">
+              <div class="loading-spinner small"></div>
+              <span>加载中...</span>
+            </div>
+            <div v-else-if="!hasMore && filteredWebsites.length > 0" class="no-more-data">
+              没有更多数据了
+            </div>
+          </div>
+      </div>
+    </div>
+    
+    <script>
+      // ============================================================
+      // Axios 拦截器：自动在所有请求头加上 JWT Token
+      // 登录后 token 存在 localStorage，每次请求自动带上
+      // ============================================================
+      axios.interceptors.request.use(config => {
+        const token = localStorage.getItem('nav_token');
+        if (token) {
+          config.headers['Authorization'] = `Bearer ${token}`;
+        }
+        return config;
+      });
+
+      // 响应拦截器：token 过期时自动跳转到登录
+      axios.interceptors.response.use(
+        res => res,
+        err => {
+          if (err.response && err.response.status === 401) {
+            localStorage.removeItem('nav_token');
+            localStorage.removeItem('nav_username');
+          }
+          return Promise.reject(err);
+        }
+      );
+
+      const { createApp, ref, onMounted, computed } = Vue;
+      
+      createApp({
+        setup() {
+          const categories = ref([]);
+          const websites = ref([]);
+          // ============================================================
+          // 响应式状态变量（ref 包裹的变量，值变化时页面自动更新）
+          // ============================================================
+          const searchKeyword = ref('');        // 搜索框输入的关键词
+          const activeCategory = ref('all');    // 当前选中的分类，'all' 表示全部
+          const showAddForm = ref(false);       // 是否显示添加网站的表单
+          const newWebsite = ref({              // 添加网站表单的数据
+            name: '',
+            url: '',
+            description: '',
+            category_id: ''
+          });
+          const expandedCategories = ref([]);   // 已展开的分类ID列表（备用）
+          const loading = ref(false);           // 是否正在加载（显示加载动画）
+          const error = ref(null);              // 错误信息，有值时显示错误提示
+          const page = ref(1);                  // 当前分页页码
+          const perPage = ref(20);              // 每页显示数量
+          const hasMore = ref(true);            // 是否还有更多数据可以加载
+          const loadingMore = ref(false);       // 是否正在加载更多（底部加载动画）
+          const searchHistory = ref([]);        // 搜索历史记录列表
+          const showSearchHistory = ref(false); // 是否显示搜索历史下拉框
+
+          // ============================================================
+          // 用户认证状态
+          // ============================================================
+          const currentUser = ref(localStorage.getItem('nav_username') || '');  // 当前登录用户名
+          const authMode = ref('');        // 'login' | 'register' | '' 控制显示哪个表单
+          const authForm = ref({ username: '', password: '', email: '' });
+          const authError = ref('');
+          const authLoading = ref(false);
+
+          // 注册
+          const doRegister = async () => {
+            authError.value = '';
+            if (!authForm.value.username.trim()) { authError.value = '请输入用户名'; return; }
+            if (authForm.value.password.length < 6) { authError.value = '密码不能少于6位'; return; }
+            if (!authForm.value.email.includes('@')) { authError.value = '邮箱格式不正确'; return; }
+            authLoading.value = true;
+            try {
+              await axios.post('/api/register', authForm.value);
+              authError.value = '';
+              authMode.value = 'login';  // 注册成功跳到登录
+              authForm.value.password = '';
+            } catch (e) {
+              authError.value = e.response?.data?.error || '注册失败';
+            } finally { authLoading.value = false; }
+          };
+
+          // 登录
+          const doLogin = async () => {
+            authError.value = '';
+            if (!authForm.value.username.trim() || !authForm.value.password) {
+              authError.value = '请输入用户名和密码'; return;
+            }
+            authLoading.value = true;
+            try {
+              const res = await axios.post('/api/login', {
+                username: authForm.value.username,
+                password: authForm.value.password
+              });
+              // 存储 token 和用户名
+              localStorage.setItem('nav_token', res.data.token);
+              localStorage.setItem('nav_username', res.data.username);
+              currentUser.value = res.data.username;
+              authMode.value = '';
+              authForm.value = { username: '', password: '', email: '' };
+            } catch (e) {
+              authError.value = e.response?.data?.error || '登录失败';
+            } finally { authLoading.value = false; }
+          };
+
+          // 退出登录
+          const doLogout = () => {
+            localStorage.removeItem('nav_token');
+            localStorage.removeItem('nav_username');
+            currentUser.value = '';
+          };
+
+          // 微信登录
+          const doWechatLogin = async () => {
+            authError.value = '';
+            authLoading.value = true;
+            try {
+              const res = await axios.post('/api/login/wechat', { code: 'mock-wechat-code' });
+              localStorage.setItem('nav_token', res.data.token);
+              localStorage.setItem('nav_username', res.data.username);
+              currentUser.value = res.data.username;
+              authMode.value = '';
+            } catch (e) {
+              authError.value = e.response?.data?.error || '微信登录失败';
+            } finally { authLoading.value = false; }
+          };
+
+          // QQ登录
+          const doQQLogin = async () => {
+            authError.value = '';
+            authLoading.value = true;
+            try {
+              const res = await axios.post('/api/login/qq', { code: 'mock-qq-code' });
+              localStorage.setItem('nav_token', res.data.token);
+              localStorage.setItem('nav_username', res.data.username);
+              currentUser.value = res.data.username;
+              authMode.value = '';
+            } catch (e) {
+              authError.value = e.response?.data?.error || 'QQ登录失败';
+            } finally { authLoading.value = false; }
+          };
+
+          // 手机号登录
+          const doPhoneLogin = () => {
+            // 这里可以打开手机号登录模态框
+            alert('手机号登录功能开发中');
+          };
+
+          // GitHub登录
+          const doGithubLogin = async () => {
+            authError.value = '';
+            authLoading.value = true;
+            try {
+              const res = await axios.post('/api/login/github', { code: 'mock-github-code' });
+              localStorage.setItem('nav_token', res.data.token);
+              localStorage.setItem('nav_username', res.data.username);
+              currentUser.value = res.data.username;
+              authMode.value = '';
+            } catch (e) {
+              authError.value = e.response?.data?.error || 'GitHub登录失败';
+            } finally { authLoading.value = false; }
+          };
+
+          // 游客登录
+          const doGuest = () => {
+            localStorage.removeItem('nav_token');
+            localStorage.setItem('nav_username', '游客');
+            currentUser.value = '游客';
+            authMode.value = '';
+          };
+
+          // ============================================================
+          // AI 搜索助手（防抖 + 骨架屏 + 键盘支持）
+          // ============================================================
+          const aiQuery = ref('');
+          const aiLoading = ref(false);
+          const aiResults = ref([]);
+          const aiError = ref('');
+          const aiPanelVisible = ref(false);
+          let aiDebounceTimer = null;        // 防抖定时器
+          let aiAbortController = null;      // 用于取消上一次未完成的请求
+
+          // 关闭面板
+          const closeAiPanel = () => { aiPanelVisible.value = false; };
+
+          // 实际发请求的函数
+          const doAiSearch = async () => {
+            const q = aiQuery.value.trim();
+            if (!q) return;
+
+            // 取消上一次还未完成的请求（防止旧结果覆盖新结果）
+            if (aiAbortController) aiAbortController.abort();
+            aiAbortController = new AbortController();
+
+            aiLoading.value = true;
+            aiPanelVisible.value = true;
+            aiError.value = '';
+            aiResults.value = [];
+
+            try {
+              const res = await axios.post('/api/ai_recommend',
+                { query: q },
+                {
+                  signal: aiAbortController.signal,
+                  timeout: 30000  // 30秒超时
+                }
+              );
+              aiResults.value = res.data.recommendations || [];
+              if (aiResults.value.length === 0) aiError.value = 'AI 暂时没有找到合适的推荐';
+            } catch (err) {
+              if (axios.isCancel && axios.isCancel(err)) return; // 主动取消不报错
+              if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+                aiError.value = '请求超时，请检查网络后重试';
+              } else {
+                aiError.value = err.response?.data?.error || 'AI 服务暂时不可用，请稍后重试';
+              }
+            } finally {
+              aiLoading.value = false;
+            }
+          };
+
+          // 防抖：用户停止输入 300ms 后自动触发
+          const aiOnInput = () => {
+            clearTimeout(aiDebounceTimer);
+            if (!aiQuery.value.trim()) {
+              aiPanelVisible.value = false;
+              return;
+            }
+            aiDebounceTimer = setTimeout(doAiSearch, 300);
+          };
+
+          // 回车立即触发（跳过防抖）
+          const aiSearch = () => {
+            clearTimeout(aiDebounceTimer);
+            doAiSearch();
+          };
+
+          // Esc 关闭面板
+          const aiOnKeydown = (e) => {
+            if (e.key === 'Escape') closeAiPanel();
+          };
+
+          // 点击页面其他地方关闭面板
+          document.addEventListener('click', (e) => {
+            const container = document.querySelector('.ai-search-container');
+            if (container && !container.contains(e.target)) {
+              closeAiPanel();
+            }
+          });
+          
+          // ============================================================
+          // onMounted：页面加载完成后自动执行
+          // async/await 表示异步操作，等待数据加载完再继续
+          // ============================================================
+          onMounted(async () => {
+            console.log('onMounted called');
+            loadSearchHistory();               // 从本地存储恢复搜索历史
+            console.log('Before fetchCategories');
+            await fetchCategories();           // 等待分类数据加载完成
+            console.log('After fetchCategories, categories:', categories.value);
+            console.log('Before fetchWebsites');
+            await fetchWebsites();             // 等待网站数据加载完成
+            console.log('After fetchWebsites, websites:', websites.value);
+            if (categories.value.length > 0) {
+              newWebsite.value.category_id = categories.value[0].id;  // 表单默认选第一个分类
+            }
+            // 注册滚动事件，用户滚动到底部时自动加载更多
+            window.addEventListener('scroll', handleScroll);
+          });
+          
+          // 从 localStorage（浏览器本地存储）读取搜索历史
+          const loadSearchHistory = () => {
+            const history = localStorage.getItem('searchHistory');
+            if (history) {
+              searchHistory.value = JSON.parse(history);  // JSON字符串转回数组
+            }
+          };
+          
+          // 把搜索历史保存到 localStorage，刷新页面后不会丢失
+          const saveSearchHistory = () => {
+            localStorage.setItem('searchHistory', JSON.stringify(searchHistory.value));
+          };
+          
+          // 添加一条搜索历史
+          const addSearchHistory = (keyword) => {
+            if (!keyword || keyword.trim() === '') return;  // 空关键词不记录
+            
+            // 如果已存在相同记录，先删除旧的（避免重复）
+            const index = searchHistory.value.indexOf(keyword);
+            if (index > -1) {
+              searchHistory.value.splice(index, 1);
+            }
+            
+            // 插入到数组最前面（最新的排在最上面）
+            searchHistory.value.unshift(keyword);
+            
+            // 最多保留10条历史记录
+            if (searchHistory.value.length > 10) {
+              searchHistory.value = searchHistory.value.slice(0, 10);
+            }
+            
+            saveSearchHistory();
+          };
+          
+          // 从后端获取分类列表，用于渲染顶部分类标签
+          const fetchCategories = async () => {
+            try {
+              error.value = null;
+              const response = await axios.get('/api/categories');  // 请求后端接口
+              categories.value = response.data;                     // 把返回的数组存入响应式变量
+            } catch (err) {
+              console.error('获取分类失败:', err);
+              error.value = '获取分类失败，请稍后重试';
+            }
+          };
+          
+          // 从后端获取网站列表，支持分页加载
+          // reset=true：重新加载（切换分类时用）；reset=false：追加加载（滚动到底部时用）
+          const fetchWebsites = async (reset = true) => {
+            try {
+              if (reset) {
+                loading.value = true;   // 显示全屏加载动画
+                page.value = 1;         // 重置到第一页
+                hasMore.value = true;   // 重置"还有更多"标志
+              } else {
+                loadingMore.value = true;  // 显示底部加载动画
+              }
+              error.value = null;
+              
+              // 构建请求参数
+              const params = {
+                page: page.value,
+                per_page: perPage.value
+              };
+              
+              // 如果选了某个分类（不是"全部"），加上分类筛选参数
+              if (activeCategory.value !== 'all') {
+                params.category_id = activeCategory.value;
+              }
+              
+              const response = await axios.get('/api/websites', { params });
+              
+              // 兼容两种返回格式：数组格式（旧）和分页对象格式（新）
+              const data = Array.isArray(response.data) ? response.data : response.data.websites;
+              if (reset) {
+                websites.value = data;                              // 重置：直接替换
+              } else {
+                websites.value = [...websites.value, ...data];     // 追加：合并到现有列表
+              }
+              
+              // 更新分页状态
+              hasMore.value = Array.isArray(response.data) ? false : response.data.has_next;
+              page.value = Array.isArray(response.data) ? 1 : response.data.page + 1;
+            } catch (err) {
+              console.error('获取网站失败:', err);
+              error.value = '获取网站失败，请稍后重试';
+              if (reset) {
+                websites.value = [];  // 加载失败时清空列表
+              }
+            } finally {
+              // finally 无论成功失败都会执行，用来关闭加载动画
+              loading.value = false;
+              loadingMore.value = false;
+            }
+          };
+          
+          // 加载更多：滚动到底部时调用，追加下一页数据
+          const loadMoreWebsites = async () => {
+            if (!loadingMore.value && hasMore.value) {  // 没有正在加载 且 还有更多数据
+              await fetchWebsites(false);               // false = 追加模式
+            }
+          };
+          
+          // computed 计算属性：依赖的数据变化时自动重新计算
+          // filteredWebsites 根据当前分类和搜索词实时过滤网站列表
+          const filteredWebsites = computed(() => {
+            let result = websites.value;
+            
+            // 如果选了某个分类，只保留该分类的网站
+            // 用 == 而不是 === 是因为 category_id 可能是数字或字符串
+            if (activeCategory.value !== 'all') {
+              result = result.filter(website => website.category_id == activeCategory.value);
+            }
+            
+            // 如果有搜索关键词，在名称、描述、URL中模糊匹配
+            if (searchKeyword.value.trim()) {
+              const keyword = searchKeyword.value.toLowerCase();
+              result = result.filter(website => 
+                website.name.toLowerCase().includes(keyword) || 
+                (website.description || '').toLowerCase().includes(keyword) ||
+                website.url.toLowerCase().includes(keyword)
+              );
+            }
+            
+            return result;
+          });
+          
+          // 根据网站URL生成图标地址
+          // 依次尝试多个 favicon 服务，失败自动切换下一个
+          const getFaviconUrl = (url) => {
+            try {
+              const urlObj = new URL(url);
+              return `https://favicon.im/${urlObj.hostname}?larger=true`;
+            } catch (e) {
+              return `https://favicon.im/${url}?larger=true`;
+            }
+          };
+
+          // 根据字符串生成固定颜色（同一网站每次颜色相同）
+          const getColorFromName = (name) => {
+            const colors = ['#4CAF50','#2196F3','#FF5722','#9C27B0','#FF9800','#00BCD4','#E91E63','#3F51B5','#009688','#F44336'];
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            return colors[Math.abs(hash) % colors.length];
+          };
+
+          // 用 Canvas 生成本地图标（首字母+背景色），无需网络
+          const generateLocalIcon = (name) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const color = getColorFromName(name);
+            // 画圆形背景
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(32, 32, 32, 0, Math.PI * 2);
+            ctx.fill();
+            // 画首字母
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText((name || '?')[0].toUpperCase(), 32, 32);
+            return canvas.toDataURL();
+          };
+
+          // 图标加载失败时，依次尝试备用服务，最终用本地生成的图标
+          const onFaviconError = (event, url, name) => {
+            const img = event.target;
+            const attempt = parseInt(img.dataset.attempt || '0');
+            try {
+              const hostname = new URL(url).hostname;
+              const fallbacks = [
+                `https://icons.duckduckgo.com/ip3/${hostname}.ico`,
+                `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
+                `https://${hostname}/favicon.ico`,
+              ];
+              if (attempt < fallbacks.length) {
+                img.dataset.attempt = attempt + 1;
+                img.src = fallbacks[attempt];
+              } else {
+                // 所有在线服务都失败，使用本地生成的图标
+                img.src = generateLocalIcon(name);
+                img.dataset.attempt = '99'; // 防止再次触发onerror
+              }
+            } catch(e) {
+              img.src = generateLocalIcon(name);
+            }
+          };
+          
+          // 根据URL自动判断网站应该属于哪个分类
+          // 通过匹配域名关键词来推断分类
+          const autoCategorize = (url) => {
+            try {
+              const urlObj = new URL(url);
+              const hostname = urlObj.hostname.toLowerCase();
+              const pathname = urlObj.pathname.toLowerCase();
+              
+              // 分类规则
+              const rules = [
+                { category: '学习', keywords: ['google', 'baidu', 'bing', 'yahoo', 'sogou', 'wikipedia', 'w3school', 'mdn', 'coursera', 'edx', 'udemy', 'khanacademy', 'codecademy', 'freecodecamp', 'stackoverflow', 'segmentfault', 'v2ex', 'jianshu', 'zhihu', 'quora'] },
+                { category: '开发工具', keywords: ['github', 'gitlab', 'bitbucket', 'gitee', 'npm', 'pypi', 'maven', 'nuget', 'docker', 'jenkins', 'travis', 'circleci', 'figma', 'canva', 'adobe', 'figma', 'codepen', 'jsfiddle', 'codesandbox'] },
+                { category: '娱乐', keywords: ['youtube', 'bilibili', 'youku', 'iqiyi', 'qq.com', 'tencent', 'netflix', 'hulu', 'spotify', 'music.163.com', 'y.qq.com', 'taobao', 'jd.com', 'meituan', 'ele.me', 'xiaohongshu', 'weibo', 'instagram', 'twitter', 'facebook', 'reddit', 'discord', 'twitch'] },
+                { category: 'AI工具', keywords: ['openai', 'chatgpt', 'claude', 'bard', 'bing.com/chat', 'anthropic', 'midjourney', 'stable diffusion', 'dall-e'] },
+                { category: '工具', keywords: ['dropbox', 'google.com/drive', 'onedrive', 'icloud', 'notion', 'evernote', 'onenote', 'trello', 'asana', 'jira', 'slack', 'teams', 'zoom', 'meet.google.com', 'calendar', 'gmail', 'outlook', 'mail', 'docs', 'sheets', 'slides', 'microsoft', 'apple', 'amazon', 'ebay', 'etsy', 'aliexpress', 'paypal', 'stripe', 'bank', 'finance', 'weather', 'map', 'drive', 'translate', 'search', 'tools', 'calculator', 'converter', 'timer', 'clock'] }
+              ];
+              
+              // 查找匹配的分类
+              for (const rule of rules) {
+                for (const keyword of rule.keywords) {
+                  if (hostname.includes(keyword) || pathname.includes(keyword)) {
+                    const category = categories.value.find(cat => cat.name === rule.category);
+                    if (category) {
+                      return category.id;
+                    }
+                  }
+                }
+              }
+              
+              // 默认分类
+              return categories.value.length > 0 ? categories.value[0].id : '';
+            } catch (error) {
+              console.error('自动分类失败:', error);
+              return categories.value.length > 0 ? categories.value[0].id : '';
+            }
+          };
+          
+          // 用户在添加表单中输入URL时触发
+          // 如果还没选分类，自动根据URL推断并填入分类
+          const handleUrlChange = () => {
+            if (newWebsite.value.url && !newWebsite.value.category_id) {
+              const categoryId = autoCategorize(newWebsite.value.url);
+              newWebsite.value.category_id = categoryId;
+            }
+          };
+          
+          // 点击网站卡片时，在新标签页打开该网站
+          // noopener,noreferrer：安全设置，防止新页面访问原页面
+          const openWebsite = (url) => {
+            try {
+              let formattedUrl = url;
+              // 如果URL没有 http:// 或 https:// 前缀，自动补上
+              if (!/^https?:\/\//i.test(url)) {
+                formattedUrl = 'https://' + url;
+              }
+              window.open(formattedUrl, '_blank', 'noopener,noreferrer');
+            } catch (error) {
+              console.error('打开网站失败:', error);
+              alert('打开网站失败，请检查URL格式是否正确');
+            }
+          };
+          
+          // 切换分类展开/收缩状态（备用功能）
+          const toggleCategory = (categoryId) => {
+            const index = expandedCategories.value.indexOf(categoryId);
+            if (index > -1) {
+              expandedCategories.value.splice(index, 1);  // 已展开则收起
+            } else {
+              expandedCategories.value.push(categoryId);  // 未展开则展开
+            }
+          };
+          
+          // 点击分类标签时触发
+          // 切换分类会清空搜索词并重新从第一页加载数据
+          const handleCategoryChange = (categoryId) => {
+            searchKeyword.value = '';           // 清空搜索框
+            activeCategory.value = categoryId; // 更新当前选中分类
+            fetchWebsites();                   // 重新加载（reset=true，从第一页开始）
+          };
+          
+          // 删除网站：调用后端 DELETE 接口，成功后刷新列表
+          const deleteWebsite = async (websiteId) => {
+            try {
+              await axios.delete(`/api/websites/${websiteId}`);
+              await fetchWebsites();  // 删除成功后重新加载列表
+            } catch (error) {
+              console.error('删除网站失败:', error);
+              error.value = '删除网站失败，请稍后重试';
+            }
+          };
+          
+          // 点击搜索按钮或按回车时触发
+          // 把关键词记入历史，然后跳转到百度搜索
+          const handleSearch = () => {
+            if (!searchKeyword.value || searchKeyword.value.trim() === '') return;
+            
+            addSearchHistory(searchKeyword.value.trim());  // 记录搜索历史
+            
+            console.log('搜索关键词:', searchKeyword.value);
+            
+            showSearchHistory.value = false;  // 隐藏历史下拉框
+            
+            // encodeURIComponent：把中文等特殊字符转成URL安全格式
+            const keyword = encodeURIComponent(searchKeyword.value.trim());
+            window.open(`https://www.baidu.com/s?wd=${keyword}`, '_blank', 'noopener,noreferrer');
+          };
+          
+          // 点击历史记录项时，填入搜索框并直接搜索
+          const useSearchHistory = (keyword) => {
+            searchKeyword.value = keyword;
+            handleSearch();
+          };
+          
+          // 清空所有搜索历史
+          const clearSearchHistory = () => {
+            searchHistory.value = [];
+            saveSearchHistory();
+          };
+          
+          // 删除单条搜索历史
+          const removeSearchHistory = (index) => {
+            searchHistory.value.splice(index, 1);  // 从数组中删除指定位置的元素
+            saveSearchHistory();
+          };
+          
+          // 搜索框失去焦点时隐藏历史下拉框
+          // 延迟200ms是为了让点击历史项的事件先触发，再隐藏
+          const hideSearchHistory = () => {
+            setTimeout(() => {
+              showSearchHistory.value = false;
+            }, 200);
+          };
+          
+          // 提交添加网站表单：验证输入 → 调用后端接口 → 刷新列表 → 重置表单
+          const addWebsite = async () => {
+            // 表单验证
+            if (!newWebsite.value.name || newWebsite.value.name.trim() === '') {
+              error.value = '请输入网站名称';
+              return;
+            }
+            if (!newWebsite.value.url || newWebsite.value.url.trim() === '') {
+              error.value = '请输入网站URL';
+              return;
+            }
+            if (!newWebsite.value.category_id) {
+              error.value = '请选择分类';
+              return;
+            }
+            
+            try {
+              await axios.post('/api/websites', newWebsite.value);  // 发送POST请求
+              await fetchWebsites();  // 重新加载网站列表
+              // 重置表单为初始状态
+              newWebsite.value = {
+                name: '',
+                url: '',
+                description: '',
+                category_id: categories.value.length > 0 ? categories.value[0].id : ''
+              };
+              showAddForm.value = false;  // 关闭表单
+              error.value = null;         // 清除错误信息
+            } catch (error) {
+              console.error('添加网站失败:', error);
+              error.value = '添加网站失败，请稍后重试';
+            }
+          };
+          
+
+          // 节流函数：限制函数在 delay 毫秒内最多执行一次
+          // 用于滚动事件，防止滚动时触发太频繁影响性能
+          const throttle = (func, delay) => {
+            let inProgress = false;
+            return function() {
+              if (!inProgress) {
+                inProgress = true;
+                func.apply(this, arguments);
+                setTimeout(() => {
+                  inProgress = false;  // delay毫秒后解锁，允许再次执行
+                }, delay);
+              }
+            };
+          };
+          
+          // 滚动事件处理：检测是否滚动到底部，是则加载更多
+          // window.innerHeight：可视区域高度
+          // window.scrollY：已滚动的距离
+          // document.body.offsetHeight：页面总高度
+          // 三者之和 >= 总高度-100 时，说明快到底部了
+          const handleScroll = throttle(() => {
+            if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
+              loadMoreWebsites();
+            }
+          }, 200);  // 200ms 内最多触发一次
+          
+          return {
+            categories,
+            websites,
+            searchKeyword,
+            activeCategory,
+            filteredWebsites,
+            getFaviconUrl,
+            onFaviconError,
+            openWebsite,
+            handleCategoryChange,
+            deleteWebsite,
+            handleSearch,
+            showAddForm,
+            newWebsite,
+            addWebsite,
+            loading,
+            error,
+            expandedCategories,
+            handleUrlChange,
+            loadMoreWebsites,
+            hasMore,
+            loadingMore,
+            searchHistory,
+            showSearchHistory,
+            useSearchHistory,
+            clearSearchHistory,
+            removeSearchHistory,
+            hideSearchHistory,
+            // 用户认证
+            currentUser,
+            authMode,
+            authForm,
+            authError,
+            authLoading,
+            doRegister,
+            doLogin,
+            doLogout,
+            // AI 搜索
+            aiQuery,
+            aiLoading,
+            aiResults,
+            aiError,
+            aiPanelVisible,
+            aiSearch,
+            aiOnInput,
+            aiOnKeydown,
+            closeAiPanel,
+            window,
+          };
+        }
+      }).mount('#app');
+    </script>
+  </body>
+</html>

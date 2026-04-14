@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试API</title>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  </head>
+  <body>
+    <button onclick="testAPI()">测试API</button>
+    <div id="result"></div>
+    <script>
+      async function testAPI() {
+        try {
+          document.getElementById('result').innerText = '正在请求...';
+          const response = await axios.get('http://localhost:5001/api/categories');
+          document.getElementById('result').innerText = '请求成功: ' + JSON.stringify(response.data);
+        } catch (error) {
+          document.getElementById('result').innerText = '请求失败: ' + error.message;
+        }
+      }
+    </script>
+  </body>
+</html>
