@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "database-manager": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-server-mysql",
+        "--host",
+        "127.0.0.1",
+        "--user",
+        "root",
+        "--password",
+        "weiyijie748",
+        "--database",
+        "navigation_db"
+      ],
+      "disabledTools": [
+        "mysql_query"
+      ]
+    }
+  }
+}
